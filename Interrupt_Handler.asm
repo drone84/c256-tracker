@@ -77,6 +77,19 @@ IRQ_HANDLER_FETCH
                 
                 JSR PLAY_TRACKER_NOTE
                 
+                CMP #$1A
+                BNE NOT_LEFT_BRACKET
+                DEC INSTR_NUMBER
+                JSR LOAD_INSTRUMENT  ; X is already set to 0
+                
+NOT_LEFT_BRACKET
+                CMP #$1B
+                BNE NOT_RIGHT_BRACKET
+                INC INSTR_NUMBER
+                JSR LOAD_INSTRUMENT  ; X is already set to 0
+                
+NOT_RIGHT_BRACKET
+
                 ; Check for Shift Press or Unpressed
                 CMP #$2A                ; Left Shift Pressed
                 BNE NOT_KB_SET_SHIFT
@@ -258,11 +271,8 @@ TIMER0_INTERRUPT
 ; /// Desc: Basically Assigning the 3Bytes Packet to Vicky's Registers
 ; ///       Vicky does the rest
 ; ///////////////////////////////////////////////////////////////////
-MOUSE_INTERRUPT 
+MOUSE_INTERRUPT
                 .as
-                LDA @lINT_PENDING_REG0
-                AND #FNX0_INT07_MOUSE
-                STA @lINT_PENDING_REG0
                 LDA KBD_INPT_BUF
                 LDX #$0000
                 setxs
@@ -272,35 +282,35 @@ MOUSE_INTERRUPT
                 CPX #$03
                 BNE EXIT_FOR_NEXT_VALUE
                 
-                ; Create Absolute Count from Relative Input
-                LDA @lMOUSE_PTR_X_POS_L
-                STA MOUSE_POS_X_LO
-                LDA @lMOUSE_PTR_X_POS_H
-                STA MOUSE_POS_X_HI
+                ; ; Create Absolute Count from Relative Input
+                ; LDA @lMOUSE_PTR_X_POS_L
+                ; STA MOUSE_POS_X_LO
+                ; LDA @lMOUSE_PTR_X_POS_H
+                ; STA MOUSE_POS_X_HI
 
-                LDA @lMOUSE_PTR_Y_POS_L
-                STA MOUSE_POS_Y_LO
-                LDA @lMOUSE_PTR_Y_POS_H
-                STA MOUSE_POS_Y_HI
+                ; LDA @lMOUSE_PTR_Y_POS_L
+                ; STA MOUSE_POS_Y_LO
+                ; LDA @lMOUSE_PTR_Y_POS_H
+                ; STA MOUSE_POS_Y_HI
                 
                 ;copy the buttons to another address
-                LDA MOUSE_PTR_BYTE0
-                AND #%0111
-                STA @lMOUSE_BUTTONS_REG
+                ; LDA MOUSE_PTR_BYTE0
+                ; AND #%0111
+                ; STA @lMOUSE_BUTTONS_REG
                 
-                ; print the character on the upper-right of the screen
-                ; this is temporary
-                CLC
-                LDA @lMOUSE_BUTTONS_REG
-                ADC #$30
-                setxl
-                LDX SCREENBEGIN
-                setdbr $AF
-                STA 79, b, X
-                setxs
-                setdbr $0
+                ; ; print the character on the upper-right of the screen
+                ; ; this is temporary
+                ; CLC
+                ; LDA @lMOUSE_BUTTONS_REG
+                ; ADC #$30
+                ; setxl
+                ; LDX SCREENBEGIN
+                ; setdbr $AF
+                ; STA 79, b, X
+                ; setxs
+                ; setdbr $0
                 
-                JSR MOUSE_BUTTON_HANDLER
+                ; JSR MOUSE_BUTTON_HANDLER
                 
                 LDX #$00
 EXIT_FOR_NEXT_VALUE
@@ -309,36 +319,36 @@ EXIT_FOR_NEXT_VALUE
                 setxl
                 RTS
                 
-MOUSE_BUTTON_HANDLER
-                setas
+; MOUSE_BUTTON_HANDLER
+                ; setas
                 
-                LDA @lMOUSE_BUTTONS_REG
-                BEQ MOUSE_CLICK_DONE
+                ; LDA @lMOUSE_BUTTONS_REG
+                ; BEQ MOUSE_CLICK_DONE
                 
-                ; set the cursor position ( X/8 and Y/8 ) and enable blinking
-                setal
-                CLC
-                LDA @lMOUSE_PTR_X_POS_L
-                LSR
-                LSR
-                LSR
-                STA CURSORX
-                STA @lVKY_TXT_CURSOR_X_REG_L
+                ; ; set the cursor position ( X/8 and Y/8 ) and enable blinking
+                ; setal
+                ; CLC
+                ; LDA @lMOUSE_PTR_X_POS_L
+                ; LSR
+                ; LSR
+                ; LSR
+                ; STA CURSORX
+                ; STA @lVKY_TXT_CURSOR_X_REG_L
                 
-                CLC
-                LDA @lMOUSE_PTR_Y_POS_L
-                LSR
-                LSR
-                LSR
-                STA CURSORY
-                STA @lVKY_TXT_CURSOR_Y_REG_L
+                ; CLC
+                ; LDA @lMOUSE_PTR_Y_POS_L
+                ; LSR
+                ; LSR
+                ; LSR
+                ; STA CURSORY
+                ; STA @lVKY_TXT_CURSOR_Y_REG_L
                 
-                setas
-                LDA #$03      ;Set Cursor Enabled And Flash Rate @1Hz
-                STA @lVKY_TXT_CURSOR_CTRL_REG
+                ; setas
+                ; LDA #$03      ;Set Cursor Enabled And Flash Rate @1Hz
+                ; STA @lVKY_TXT_CURSOR_CTRL_REG
                 
-MOUSE_CLICK_DONE
-                RTS
+; MOUSE_CLICK_DONE
+                ; RTS
 ;
 ; ///////////////////////////////////////////////////////////////////
 ; ///

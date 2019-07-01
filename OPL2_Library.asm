@@ -1181,11 +1181,9 @@ OPL2_SET_KEYON              ;Return Byte, Param: (byte channel, bool keyOn);
                 setas
                 LDA OPL2_PARAMETER0
                 AND #$01
-                ASL
-                ASL
-                ASL
-                ASL
-                ASL
+                BEQ SET_KEYON_OFF
+                LDA #$20
+    SET_KEYON_OFF
                 STA OPL2_PARAMETER0
                 LDA [OPL2_IND_ADDY_LL]
                 AND #$DF

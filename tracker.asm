@@ -13,12 +13,15 @@ MIDI_CHANNEL    .byte 0
 MIDI_DATA1      .byte 0
 MIDI_DATA2      .byte 0
 TIMING_CNTR     .byte 0
+INSTR_ADDR      .fill 3,0
+INSTR_NUMBER    .byte $17, 0
 
 MOUSE_BUTTONS_REG= $180F00 ; bit 2=middle, bit 1=right, bit 0=left
 MIDI_DATA_REG    = $AF1330 ; read/write MIDI data
 MIDI_STATUS_REG  = $AF1331 ; read - status, write control
 MIDI_ADDRESS_HI  = $AF1160
 MIDI_ADDRESS_LO  = $AF1161
+INSTR_REC_LEN    = INSTRUMENT_BAGPIPE1 - INSTRUMENT_ACCORDN
 
 * = MOUSE_BUTTONS_REG
                 .byte 0
@@ -111,47 +114,24 @@ TRACKER
                 JSR INIT_CURSOR
                 JSR RESET_STATE_MACHINE
                 
+                ; store the high-byte in memory
+                LDA #`INSTRUMENT_ACCORDN
+                STA INSTR_ADDR+2
+                
+                ; pick ELPIANO2 as the default instrument
+                LDA #$21
+                STA @lINSTR_NUMBER
+                
                 LDX #0 ; setup channel 1
-                LDY #(INSTRUMENT_ELCLAV1-INSTRUMENT_ACCORDN) / 12 ; load accordion
                 JSR LOAD_INSTRUMENT
                 
                 LDX #1 ; setup channel 2
-                LDY #(INSTRUMENT_ELCLAV1-INSTRUMENT_ACCORDN) / 12 ; load bass1
                 JSR LOAD_INSTRUMENT
                 
                 LDX #2 ; setup channel 3
-                LDY #(INSTRUMENT_ELCLAV1-INSTRUMENT_ACCORDN) / 12 ; load brass
                 JSR LOAD_INSTRUMENT
                 
-                LDA #$88
-                LDY #128*10 + 10
-                JSR WRITE_HEX
-                
-                LDA #$AA
-                LDY #128*10 + 14
-                JSR WRITE_HEX
-                
                 JSL IOPL2_TONE_TEST
-                
-                ;all channels off
-                LDA @lOPL2_S_BASE + $B0
-                AND #~$20
-                NOP
-                STA @lOPL2_S_BASE + $B0
-                
-                LDA @lOPL2_S_BASE + $B1
-                AND #~$20
-                NOP
-                STA @lOPL2_S_BASE + $B1
-                
-                LDA @lOPL2_S_BASE + $B2
-                AND #~$20
-                NOP
-                STA @lOPL2_S_BASE + $B2
-                
-                LDA #$99
-                LDY #128*10 + 12
-                JSR WRITE_HEX
 
                 JSR ENABLE_IRQS
                 CLI
@@ -193,7 +173,7 @@ DRAW_DISPLAY
                 STA BORDER_CTRL_REG
 
                 ; enable text display
-                LDA #Mstr_Ctrl_Text_Mode_En + Mstr_Ctrl_Text_Overlay
+                LDA #Mstr_Ctrl_Text_Mode_En
                 STA MASTER_CTRL_REG_L
 
                 setal
@@ -217,11 +197,20 @@ COPYFONT        LDA #256 * 8
                 LDY #<>FONT_MEMORY_BANK0
                 MVN #`FNXFONT,#$AF
 
-                ; set the fg LUT to Green
+                ; set the fg LUT to Purple
                 LDA #$60FF
                 STA FG_CHAR_LUT_PTR + 8;
+                STA BG_CHAR_LUT_PTR + 8;
                 LDA #$0080
                 STA FG_CHAR_LUT_PTR + 10;
+                STA BG_CHAR_LUT_PTR + 10;
+                
+                LDA #$8020
+                STA FG_CHAR_LUT_PTR + 12;
+                STA BG_CHAR_LUT_PTR + 12;
+                LDA #$0010
+                STA FG_CHAR_LUT_PTR + 14;
+                STA BG_CHAR_LUT_PTR + 14;
 
                 ; set the character bg and fg color
                 LDX #128*64
@@ -279,11 +268,15 @@ ENABLE_IRQS
                 STA @lINT_MASK_REG1
                 RTS
                 
-; Y contains the screen position
-; A contains the value to display
+; ****************************************************
+; * Write a Hex Value to the position specified by Y
+; * Y contains the screen position
+; * A contains the value to display
 WRITE_HEX
                 .as
-                PHA
+                .xl
+        PHA
+          PHX
                 PHY
                 STA @lTEMP_STORAGE
                 AND #$F0
@@ -306,11 +299,97 @@ WRITE_HEX
                 PLY
                 LDA @lLOW_NIBBLE
                 STA [SCREENBEGIN], Y
+                ; change the foreground color of the text
+                LDA #$3030
+                TYX
+                STA @lCS_COLOR_MEM_PTR, X
                 setas
-                PLA
+                
+          PLX
+        PLA
+                RTS
+                
+; ****************************************************
+; * Write On or Off to the position specified by Y
+; * Y contains the screen position
+; * A if 0, then Off, otherwise On
+WRITE_OFF_ON
+                .as
+                PHX
+                CMP #0
+                BEQ DISPLAY_OFF
+                LDA #'O'
+                STA [SCREENBEGIN], Y
+                LDA #$30
+                TYX
+                STA @lCS_COLOR_MEM_PTR, X
+                INY
+                
+                LDA #'n'
+                STA [SCREENBEGIN], Y
+                LDA #$30
+                TYX
+                STA @lCS_COLOR_MEM_PTR, X
+                
+                INY
+                LDA #$20
+                STA [SCREENBEGIN], Y
+                LDA #$30
+                TYX
+                STA @lCS_COLOR_MEM_PTR, X
+                BRA ON_OFF_DONE
+                
+DISPLAY_OFF
+                LDA #'O'
+                STA [SCREENBEGIN], Y
+                LDA #$30
+                TYX
+                STA @lCS_COLOR_MEM_PTR, X
+                INY
+                
+                LDA #'f'
+                STA [SCREENBEGIN], Y
+                LDA #$30
+                TYX
+                STA @lCS_COLOR_MEM_PTR, X
+                
+                INY
+                LDA #'f'
+                STA [SCREENBEGIN], Y
+                LDA #$30
+                TYX
+                STA @lCS_COLOR_MEM_PTR, X
+ON_OFF_DONE
+                PLX
+                RTS
+
+; Y Register contains the position to write
+WRITE_INSTRUMENT
+                .as
+                LDA #10
+                STA @lTEMP_STORAGE
+      WRITE_CHAR
+                LDA [INSTR_ADDR]
+                STA [SCREENBEGIN], Y
+                INC INSTR_ADDR
+                BNE WRITE_CONTINUE
+                INC INSTR_ADDR + 1
+                
+      WRITE_CONTINUE
+                LDA #$30
+                TYX
+                STA @lCS_COLOR_MEM_PTR, X
+                INY
+                
+                LDA @lTEMP_STORAGE
+                DEC A
+                STA @lTEMP_STORAGE
+                BNE WRITE_CHAR
+                
                 RTS
                 
 RESET_STATE_MACHINE
+                .as
                 LDA #0
                 STA STATE_MACHINE
                 
@@ -324,78 +403,101 @@ RESET_STATE_MACHINE
                 RTS
                 
 DISPLAY_LINE
+                .as
                 LDA LINE_NUM
                 ; display the line number
-                LDY #22*128 + 7
+                LDY #23*128 + 7
                 JSR WRITE_HEX
                 RTS
                 
 DISPLAY_PATTERN
+                .as
                 LDA PATTERN_NUM
                 ; display the pattern number
-                LDY #22*128 + 19
+                LDY #23*128 + 19
                 JSR WRITE_HEX
                 RTS
 
 ; X contains the channel
-; Y contains the instrument number
 LOAD_INSTRUMENT
-                setaxl
-                ; calculate the memory offset to the instrument bank
-                TYA
-                STA @lM0_OPERAND_A
-                LDA #12
-                STA @lM0_OPERAND_B
-                LDA @lM0_RESULT
-                PHA
-                setas
+                .as
+                LDA @lINSTR_NUMBER
 
-                setdbr `INSTRUMENT_ACCORDN
-                PLY
-                LDA INSTRUMENT_ACCORDN,Y
+                ; calculate the memory offset to the instrument bank
+                STA @lM0_OPERAND_A
+                LDA #0
+                STA @lM0_OPERAND_A + 1
+                STA @lM0_OPERAND_B + 1
+                LDA #INSTR_REC_LEN
+                STA @lM0_OPERAND_B
+                setal
+                LDA @lM0_RESULT
+                
+                CLC
+                ADC #<>INSTRUMENT_ACCORDN
+                STA INSTR_ADDR
+                
+                setas
+                ; Y still contains the instrument number
+                LDA @lINSTR_NUMBER
+                LDY #5 * 128 + 19
+                JSR WRITE_HEX
+
+                LDA [INSTR_ADDR]
                 BNE DRUM_SET
                 
                 ; $20 Amp Mod, Vibrator, EG Type, Key Scaling, F Mult
-                INY
-                LDA INSTRUMENT_ACCORDN,Y
-                STA @lOPL2_S_AM_VID_EG_KSR_MULT,X
-                LDA INSTRUMENT_ACCORDN+6,Y
-                STA @lOPL2_S_AM_VID_EG_KSR_MULT + 3,X
+                INC INSTR_ADDR
+                BNE LD_INST_1
+                INC INSTR_ADDR+1
+    LD_INST_1         
+                JSR LOAD_AM_VIB_MULT
                 
                 ; $40 Key Scaling Lvl, Operator Lvl
-                INY
-                LDA INSTRUMENT_ACCORDN,Y
-                STA @lOPL2_S_KSL_TL,X
-                LDA INSTRUMENT_ACCORDN+6,Y
-                STA @lOPL2_S_KSL_TL + 3,X
-                ; $60 Attack Rate, Decay Rate
-                INY
-                LDA INSTRUMENT_ACCORDN,Y
-                STA @lOPL2_S_AR_DR,X
-                LDA INSTRUMENT_ACCORDN+6,Y
-                STA @lOPL2_S_AR_DR + 3,X
-                ; $80 Sustain Level, Release Rate
-                INY
-                LDA INSTRUMENT_ACCORDN,Y
-                STA @lOPL2_S_SL_RR,X
-                LDA INSTRUMENT_ACCORDN+6,Y
-                STA @lOPL2_S_SL_RR + 3,X
-                ; $C0 Feedback, Connection Type
-                INY
-                LDA INSTRUMENT_ACCORDN,Y
-                STA @lOPL2_S_FEEDBACK,X
-                ; $E0 Waveform Selection
-                INY
-                LDA INSTRUMENT_ACCORDN,Y
-                STA @lOPL2_S_WAVE_SELECT,X
-                LDA INSTRUMENT_ACCORDN+5,Y
-                STA @lOPL2_S_WAVE_SELECT+3,X
+                INC INSTR_ADDR
+                BNE LD_INST_2
+                INC INSTR_ADDR+1
+    LD_INST_2 
+                JSR LOAD_KEY_OP_LVL
                 
+                ; $60 Attack Rate, Decay Rate
+                INC INSTR_ADDR
+                BNE LD_INST_3
+                INC INSTR_ADDR+1
+    LD_INST_3 
+                JSR LOAD_ATT_DEC_RATE
+                
+                ; $80 Sustain Level, Release Rate
+                INC INSTR_ADDR
+                BNE LD_INST_4
+                INC INSTR_ADDR+1
+    LD_INST_4
+                JSR LOAD_SUSTAIN_RELEASE_RATE
+                
+                ; $C0 Feedback, Connection Type
+                INC INSTR_ADDR
+                BNE LD_INST_5
+                INC INSTR_ADDR+1
+    LD_INST_5
+                JSR LOAD_FEEDBACK_ALGO
+                
+                ; $E0 Waveform Selection
+                INC INSTR_ADDR
+                BNE LD_INST_6
+                INC INSTR_ADDR+1
+    LD_INST_6
+                JSR LOAD_WAVE
+                
+                setal
+                LDA INSTR_ADDR
+                ADC #6
+                STA INSTR_ADDR
+                setas
+                ;display instrument name
+                LDY #5 * 128 + 24
+                JSR WRITE_INSTRUMENT
                 
 DRUM_SET
-                
-                
-                setdbr 0
                 RTS
 
 INIT_MIDI
@@ -426,6 +528,208 @@ MORE_DATA       LDA @lMIDI_DATA_REG
                 
 INIT_MIDI_DONE
                 PLA
+                RTS
+
+; 
+LOAD_AM_VIB_MULT
+                LDA [INSTR_ADDR]
+                PHA
+                PHA
+                PHA
+                PHA
+                STA @lOPL2_S_AM_VID_EG_KSR_MULT,X
+                AND #TREMOLO
+                LDY #7 * 128 + 13
+                JSR WRITE_OFF_ON
+                
+                PLA
+                AND #VIBRATO
+                LDY #8 * 128 + 13
+                JSR WRITE_OFF_ON
+                
+                PLA
+                AND #SUSTAINING
+                LDY #9 * 128 + 13
+                JSR WRITE_OFF_ON
+                
+                PLA
+                AND #KSR
+                LDY #10 * 128 + 13
+                JSR WRITE_OFF_ON
+                
+                PLA
+                AND #MULTIPLIER
+                LDY #11 * 128 + 14
+                JSR WRITE_HEX
+                
+                LDY #6
+                LDA [INSTR_ADDR], Y
+                PHA
+                PHA
+                PHA
+                PHA
+                STA @lOPL2_S_AM_VID_EG_KSR_MULT + 3,X
+                AND #TREMOLO
+                LDY #7 * 128 + 39
+                JSR WRITE_OFF_ON
+                
+                PLA
+                AND #VIBRATO
+                LDY #8 * 128 + 39
+                JSR WRITE_OFF_ON
+                
+                PLA
+                AND #SUSTAINING
+                LDY #9 * 128 + 39
+                JSR WRITE_OFF_ON
+                
+                PLA
+                AND #KSR
+                LDY #10 * 128 + 39
+                JSR WRITE_OFF_ON
+                
+                PLA
+                AND #MULTIPLIER
+                LDY #11 * 128 + 40
+                JSR WRITE_HEX
+                
+                RTS
+                
+LOAD_KEY_OP_LVL
+                ; Operator 1
+                LDA [INSTR_ADDR]
+                PHA
+                STA @lOPL2_S_KSL_TL,X
+                AND #KEY_SCALE
+                ROL A
+                ROL A
+                ROL A
+                LDY #12 * 128 + 14
+                JSR WRITE_HEX
+                
+                PLA 
+                AND #OP_LEVEL
+                LDY #13 * 128 + 14
+                JSR WRITE_HEX
+                
+                ; Operator 2
+                LDY #6
+                LDA [INSTR_ADDR],Y
+                PHA
+                STA @lOPL2_S_KSL_TL + 3,X
+                AND #KEY_SCALE
+                ROL A
+                ROL A
+                ROL A
+                LDY #12 * 128 + 40
+                JSR WRITE_HEX
+                
+                PLA 
+                AND #OP_LEVEL
+                LDY #13 * 128 + 40
+                JSR WRITE_HEX
+                
+                RTS
+
+LOAD_ATT_DEC_RATE
+                LDA [INSTR_ADDR]
+                PHA
+                STA @lOPL2_S_AR_DR,X
+                AND #ATTACK_RT
+                LSR A
+                LSR A
+                LSR A
+                LSR A
+                LDY #14 * 128 + 14
+                JSR WRITE_HEX
+                
+                PLA
+                AND #DECAY_RT
+                LDY #15 * 128 + 14
+                JSR WRITE_HEX
+                
+                LDY #6
+                LDA [INSTR_ADDR],Y
+                PHA
+                STA @lOPL2_S_AR_DR + 3,X
+                AND #ATTACK_RT
+                LSR A
+                LSR A
+                LSR A
+                LSR A
+                LDY #14 * 128 + 40
+                JSR WRITE_HEX
+                
+                PLA
+                AND #DECAY_RT
+                LDY #15 * 128 + 40
+                JSR WRITE_HEX
+                RTS
+                
+LOAD_SUSTAIN_RELEASE_RATE
+                LDA [INSTR_ADDR]
+                PHA
+                STA @lOPL2_S_SL_RR,X
+                AND #ATTACK_RT
+                LSR A
+                LSR A
+                LSR A
+                LSR A
+                LDY #16 * 128 + 14
+                JSR WRITE_HEX
+                
+                PLA
+                AND #DECAY_RT
+                LDY #17 * 128 + 14
+                JSR WRITE_HEX
+                
+                LDY #6
+                LDA [INSTR_ADDR],Y
+                PHA
+                STA @lOPL2_S_SL_RR + 3,X
+                AND #ATTACK_RT
+                LSR A
+                LSR A
+                LSR A
+                LSR A
+                LDY #16 * 128 + 40
+                JSR WRITE_HEX
+                
+                PLA
+                AND #DECAY_RT
+                LDY #17 * 128 + 40
+                JSR WRITE_HEX
+                RTS
+                
+LOAD_FEEDBACK_ALGO
+                LDA [INSTR_ADDR]
+                PHA
+                STA @lOPL2_S_FEEDBACK,X
+                AND #FEEDBACK
+                LSR A
+                LDY #20 * 128 + 40
+                JSR WRITE_HEX
+                
+                PLA
+                AND #ALGORITHM
+                LDY #21 * 128 + 40
+                JSR WRITE_HEX
+                
+                RTS
+
+LOAD_WAVE
+                LDA [INSTR_ADDR]
+                STA @lOPL2_S_WAVE_SELECT,X
+                AND #$7
+                LDY #18 * 128 + 14
+                JSR WRITE_HEX
+                
+                LDY #5
+                LDA [INSTR_ADDR],Y
+                STA @lOPL2_S_WAVE_SELECT+3,X
+                AND #$7
+                LDY #18 * 128 + 40
+                JSR WRITE_HEX
                 RTS
 
 INIT_KEYBOARD
@@ -671,6 +975,7 @@ SETUP_VDMA_FOR_TESTING_1D
 ; A = Scan code
 PLAY_TRACKER_NOTE
                 PHA
+                PHX
                 setxs
                 TAX
                 BMI NONOTE ; key release should not play a note
@@ -680,7 +985,7 @@ PLAY_TRACKER_NOTE
                 setxl
                 LDY #128 + 70
                 JSR WRITE_HEX
-                STA OPL2_NOTE
+                STA @lOPL2_NOTE
                 
                 BMI NONOTE  ; if the lookup table returns $80, then don't play the note
                 
@@ -689,23 +994,22 @@ PLAY_TRACKER_NOTE
                 LSR
                 LSR
                 LSR
-                STA OPL2_OCTAVE
-                LDA OPL2_NOTE
+                STA @lOPL2_OCTAVE
+                LDA @lOPL2_NOTE
                 AND #$0F
-                STA OPL2_NOTE
-                LDA #1
-                STA OPL2_CHANNEL
-                setal
+                STA @lOPL2_NOTE
+                LDA #0
+                STA @lOPL2_CHANNEL
                 JSR OPL2_GET_REG_OFFSET
                 JSL OPL2_PLAYNOTE
                 setas
                 
 NONOTE          
                 setxl
+                PLX
                 PLA
                 RTS
 
-; databank is set to $18
 ; xl and as
 ; A contains the MIDI DATA
 RECEIVE_MIDI_DATA
@@ -760,7 +1064,7 @@ NOTE_ON         ; we need two data bytes: the note and the velocity
                 BNE MORE_NOTE_DATA_NEEDED
                 
                 STZ MIDI_COUNTER  ; reset the counter
-                LDA #1
+                LDA #0
                 STA OPL2_CHANNEL
                 
                 
