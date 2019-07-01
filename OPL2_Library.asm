@@ -1190,6 +1190,7 @@ OPL2_SET_KEYON              ;Return Byte, Param: (byte channel, bool keyOn);
                 ORA OPL2_PARAMETER0
                 STA [OPL2_IND_ADDY_LL]
                 RTS
+
 ; OPL2_SET_FEEDBACK
 ; Inputs
 ; OPL2_OPERATOR    @ $000026 ;

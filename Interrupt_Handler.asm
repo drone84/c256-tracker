@@ -7,11 +7,11 @@
 ;////////////////////////////////////////////////////////////////////////////
 
 check_irq_bit  .macro
-                LDA @l\1
+                LDA \1
                 AND #\2
                 CMP #\2
                 BNE END_CHECK
-                STA @l\1
+                STA \1
                 JSR \3
                 
 END_CHECK
@@ -19,8 +19,14 @@ END_CHECK
                 
 IRQ_HANDLER
 ; First Block of 8 Interrupts
+                setdp 0
+                
                 setas
-                LDA @lINT_PENDING_REG0
+                LDA #0
+                PHA
+                PLB
+                
+                LDA INT_PENDING_REG0
                 BEQ CHECK_PENDING_REG1
 ; Start of Frame
                 check_irq_bit INT_PENDING_REG0, FNX0_INT00_SOF, SOF_INTERRUPT
@@ -34,7 +40,7 @@ IRQ_HANDLER
 ; Second Block of 8 Interrupts
 CHECK_PENDING_REG1
                 setas
-                LDA @lINT_PENDING_REG1
+                LDA INT_PENDING_REG1
                 BEQ CHECK_PENDING_REG2   ; BEQ EXIT_IRQ_HANDLE
 ; Keyboard Interrupt
                 check_irq_bit INT_PENDING_REG1, FNX1_INT00_KBD, KEYBOARD_INTERRUPT
@@ -50,7 +56,7 @@ CHECK_PENDING_REG1
 ; Third Block of 8 Interrupts
 CHECK_PENDING_REG2
                 setas
-                LDA @lINT_PENDING_REG2
+                LDA INT_PENDING_REG2
                 BEQ EXIT_IRQ_HANDLE
                 
 ; OPL2 Right Interrupt
@@ -70,7 +76,7 @@ KEYBOARD_INTERRUPT
 IRQ_HANDLER_FETCH
                 LDA KBD_INPT_BUF        ; Get Scan Code from KeyBoard
                 STA KEYBOARD_SC_TMP     ; Save Code Immediately
-                
+
                 setxl
                 LDY #70
                 JSR WRITE_HEX  ; print the HEX key code at column 70 on the top line
@@ -129,7 +135,9 @@ KB_UNPRESSED    AND #$80                ; See if the Scan Code is press or Depre
                 
                 BRL KB_CHECK_B_DONE
 
-KB_NORM_SC      LDA KEYBOARD_SC_TMP       ;
+KB_NORM_SC      
+
+                LDA KEYBOARD_SC_TMP
                 setxs
                 TAX
                 LDA KEYBOARD_SC_FLG     ; Check to See if the SHIFT Key is being Pushed
@@ -274,43 +282,45 @@ TIMER0_INTERRUPT
 MOUSE_INTERRUPT
                 .as
                 LDA KBD_INPT_BUF
+                PHA
                 LDX #$0000
                 setxs
                 LDX MOUSE_PTR
+                BNE MOUSE_BYTE_GT1
+                
+                ; copy the buttons to another address
+                AND #%0111
+                STA MOUSE_BUTTONS_REG
+                
+    MOUSE_BYTE_GT1
+                PLA
                 STA @lMOUSE_PTR_BYTE0, X
                 INX
                 CPX #$03
                 BNE EXIT_FOR_NEXT_VALUE
                 
-                ; ; Create Absolute Count from Relative Input
-                ; LDA @lMOUSE_PTR_X_POS_L
-                ; STA MOUSE_POS_X_LO
-                ; LDA @lMOUSE_PTR_X_POS_H
-                ; STA MOUSE_POS_X_HI
+                ; Create Absolute Count from Relative Input
+                LDA @lMOUSE_PTR_X_POS_L
+                STA MOUSE_POS_X_LO
+                LDA @lMOUSE_PTR_X_POS_H
+                STA MOUSE_POS_X_HI
 
-                ; LDA @lMOUSE_PTR_Y_POS_L
-                ; STA MOUSE_POS_Y_LO
-                ; LDA @lMOUSE_PTR_Y_POS_H
-                ; STA MOUSE_POS_Y_HI
+                LDA @lMOUSE_PTR_Y_POS_L
+                STA MOUSE_POS_Y_LO
+                LDA @lMOUSE_PTR_Y_POS_H
+                STA MOUSE_POS_Y_HI
                 
-                ;copy the buttons to another address
-                ; LDA MOUSE_PTR_BYTE0
-                ; AND #%0111
-                ; STA @lMOUSE_BUTTONS_REG
                 
-                ; ; print the character on the upper-right of the screen
-                ; ; this is temporary
-                ; CLC
-                ; LDA @lMOUSE_BUTTONS_REG
-                ; ADC #$30
-                ; setxl
-                ; LDX SCREENBEGIN
-                ; setdbr $AF
-                ; STA 79, b, X
-                ; setxs
-                ; setdbr $0
+                ; print the character on the upper-right of the screen
+                ; this is temporary
+                CLC
+                LDA MOUSE_BUTTONS_REG
+                setxl
+                LDY #60
+                JSR WRITE_HEX
+                setxs
                 
-                ; JSR MOUSE_BUTTON_HANDLER
+                JSR MOUSE_BUTTON_HANDLER
                 
                 LDX #$00
 EXIT_FOR_NEXT_VALUE
@@ -319,36 +329,37 @@ EXIT_FOR_NEXT_VALUE
                 setxl
                 RTS
                 
-; MOUSE_BUTTON_HANDLER
-                ; setas
+MOUSE_BUTTON_HANDLER
+                setas
                 
-                ; LDA @lMOUSE_BUTTONS_REG
-                ; BEQ MOUSE_CLICK_DONE
+                LDA @lMOUSE_BUTTONS_REG
+                BEQ MOUSE_CLICK_DONE
                 
-                ; ; set the cursor position ( X/8 and Y/8 ) and enable blinking
-                ; setal
-                ; CLC
-                ; LDA @lMOUSE_PTR_X_POS_L
-                ; LSR
-                ; LSR
-                ; LSR
-                ; STA CURSORX
-                ; STA @lVKY_TXT_CURSOR_X_REG_L
+                ; set the cursor position ( X/8 and Y/8 ) and enable blinking
+                setal
+                CLC
+                LDA @lMOUSE_PTR_X_POS_L
+                LSR
+                LSR
+                LSR
+                LSR
+                STA CURSORX
+                STA @lVKY_TXT_CURSOR_X_REG_L
                 
-                ; CLC
-                ; LDA @lMOUSE_PTR_Y_POS_L
-                ; LSR
-                ; LSR
-                ; LSR
-                ; STA CURSORY
-                ; STA @lVKY_TXT_CURSOR_Y_REG_L
+                CLC
+                LDA @lMOUSE_PTR_Y_POS_L
+                LSR
+                LSR
+                LSR
+                STA CURSORY
+                STA @lVKY_TXT_CURSOR_Y_REG_L
                 
-                ; setas
-                ; LDA #$03      ;Set Cursor Enabled And Flash Rate @1Hz
-                ; STA @lVKY_TXT_CURSOR_CTRL_REG
+                setas
+                LDA #$03      ;Set Cursor Enabled And Flash Rate @1Hz
+                STA @lVKY_TXT_CURSOR_CTRL_REG
                 
-; MOUSE_CLICK_DONE
-                ; RTS
+MOUSE_CLICK_DONE
+                RTS
 ;
 ; ///////////////////////////////////////////////////////////////////
 ; ///
